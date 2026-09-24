@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <title>广州设施数据综合管理平台</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        :root {
+            --primary-color: #1890ff;
+            --sidebar-bg: #001529;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Microsoft YaHei";
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            background: #f0f2f5;
+        }
+
+        /* 最左侧项目主导航栏 */
+        #main-nav {
+            width: 80px;
+            background: var(--sidebar-bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 20px;
+            z-index: 100;
+        }
+
+        .nav-item {
+            width: 60px;
+            height: 60px;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            transition: 0.3s;
+            opacity: 0.7;
+        }
+
+        .nav-item.active {
+            background: var(--primary-color);
+            opacity: 1;
+        }
+
+        .nav-item:hover {
+            opacity: 1;
+        }
+
+        .nav-icon {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        #content-container {
+            flex: 1;
+            display: flex;
+            position: relative;
+        }
+
+        .page {
+             position: absolute;
+    width: 100%;
+    height: 100%;
+    display: none;
+        }
+
+        .page.active {
+            display: flex;
+        }
+
+        /* 地图页样式 */
+        #map-sidebar {
+            width: 350px;
+            background: #fff;
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+        }
+#page-container {
+     width: 350px;        /* 左侧栏固定宽度 */
+    flex-shrink: 0;      /* 不允许被地图挤压 */
+    position: relative;
+    background: #fff;
+    border-right: 1px solid #ddd;
+}
+        #map-view {
+            flex: 1;
+        }
+
+        /* 表格页样式 */
+        #stats-page {
+            flex-direction: column;
+            padding: 25px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        .stats-table-card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .table-toolbar {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border-bottom: 1px solid #f0f0f0;
+            padding: 12px;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        th {
+            background: #fafafa;
+        }
+
+        .filter-group {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #fafafa;
+            border-radius: 4px;
+        }
+
+        select, input {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 10px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <nav id="main-nav">
+        <div class="nav-item active" onclick="switchPage('map-page', this)">
+            <span class="nav-icon">🗺️</span>
+            <span>地图模式</span>
+        </div>
+        <div class="nav-item" onclick="switchPage('stats-page', this)">
+            <span class="nav-icon">📊</span>
+            <span>数据明细</span>
+        </div>
+        <div class="nav-item" onclick="switchPage('nav-page', this)">
+            <span class="nav-icon">🧭</span>
+            <span>地图导航</span>
+        </div>
+
+    </nav>
+
+    <div id="content-container">
+        <div id="page-container">
+        <div id="map-page" class="page active">
+            <aside id="map-sidebar">
+                <div style="padding: 20px; background: var(--primary-color); color: #fff;">
+                    <h3 style="margin:0">🌇广州服务设施图</h3>
+                </div>
+                <div style="padding: 15px; overflow-y: auto;">
+                    <div class="filter-group">
+                        <label>分类 & 区域</label>
+                        <select id="mapCat">
+                            <option value="酒店">🏨 酒店</option>
+                            <option value="美食">🍲 美食</option>
+                            <option value="景点周边游">🏞️ 景点</option>
+                            <option value="休闲娱乐">🎮 休闲娱乐</option>
+                        </select>
+                        <select id="mapDist">
+                            <option value="">全广州市</option>
+                            <option value="天河区">天河区</option>
+                            <option value="越秀区">越秀区</option>
+                            <option value="海珠区">海珠区</option>
+                            <option value="荔湾区">荔湾区</option>
+                            <option value="白云区">白云区</option>
+                            <option value="黄埔区">黄埔区</option>
+                            <option value="番禺区">番禺区</option>
+                            <option value="花都区">花都区</option>
+                            <option value="南沙区">南沙区</option>
+                            <option value="从化区">从化区</option>
+                            <option value="增城区">增城区</option>
+                        </select>
+                        <input type="text" id="mapKw" placeholder="输入搜索关键词...">
+                        <button class="btn" onclick="handleMapSearch()">查询定位</button>
+                    </div>
+                   
+
+
+                    <div id="mapInfo" style="font-size:12px; color:#999; margin-bottom:10px;">请查询...</div>
+                    <div id="mapResultsList" style="font-size:14px;"></div>
+                </div>
+            </aside>
+            
+        </div>
+
+       
+     <div id="nav-page" class="page">
+      <aside id="map-sidebar">
+        <div style="padding: 20px; background: var(--primary-color); color: #fff;">
+            <h3 style="margin:0">🧭 地图导航</h3>
+        </div>
+
+        <div style="padding: 15px; overflow-y: auto;">
+            <!-- 这里等下放地图导航模块 -->
+              <!-- ================= 地图导航模块（新增） ================= -->
+                     <div class="filter-group">
+                       <label style="font-weight:bold;">🧭 地图导航</label>
+
+                       <label>起点：</label>
+                         <select id="navStart">
+                           <option value="">请选择体育场</option>
+                          <option value="113.40592,23.14247">广东奥林匹克体育中心体育场</option>
+<option value="113.40213,23.14290">广东奥林匹克体育中心游泳跳水馆</option>
+<option value="113.31963,23.14007">广州天河体育中心体育馆</option>
+<option value="113.271575,23.184314">广州体育馆</option>
+
+                        </select>
+                           <label>终点类型：</label>
+<select id="navEndCat">
+    <option value="酒店">🏨 酒店</option>
+    <option value="美食">🍲 美食</option>
+    <option value="景点周边游">🏞️ 景点</option>
+    <option value="休闲娱乐">🎮 休闲娱乐</option>
+</select>
+
+                       <label>终点：</label>
+                          <input type="text" id="navEndInput" placeholder="搜索或选择终点">
+                        <select id="navEnd"></select>
+
+                        <label>导航方式：</label>
+                           <div style="display:flex;gap:6px;">
+                               <label><input type="radio" name="navMode" value="walking"> 步行</label>
+                               <label><input type="radio" name="navMode" value="cycling"> 骑行</label>
+                               <label><input type="radio" name="navMode" value="driving" checked>驾车</label>
+                            </div>
+
+                        <button class="btn" onclick="drawRoute()">导航路线</button>
+                        
+
+                               <div id="navInfo" style="font-size:12px;color:#666;margin-top:6px;">
+                              尚未规划路线
+                                       </div>
+                                       </div>
+                                     </div>
+                                      </aside>
+
+    
+                                         </div>
+                                            </div>
+ <div id="stats-page" class="page">
+            <div class="stats-table-card">
+                <h2>📋 数据概况明细表</h2>
+                <div class="table-toolbar">
+                    <select id="tblCat" onchange="loadTableData()" style="width: 200px;">
+                        <option value="酒店">酒店数据集</option>
+                        <option value="美食">美食数据集</option>
+                        <option value="景点周边游">景点数据集</option>
+                        <option value="休闲娱乐">休闲娱乐数据集</option>
+                    </select>
+                    <span id="tblStatus" style="color: #666; font-size: 14px;">已统计 0 条数据</span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>设施名称</th>
+                            <th>详细地址</th>
+                            <th>所属类型</th>
+                            <th>坐标位置</th>
+                        </tr>
+                    </thead>
+                    <tbody id="statsTbody">
+                        <tr><td colspan="4" style="text-align:center; padding:50px; color:#999;">正在加载数据集...</td></tr>
+                    </tbody>
+                </table>
+                <div id="pagination-controls" style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; padding: 10px;">
+             <button class="btn" id="prevBtn" style="width: 80px; margin: 0;" onclick="changePage(-1)">上一页</button>
+    
+         <div style="display: flex; align-items: center; gap: 5px; color: #666; font-size: 14px;">
+         <span>第</span>
+         <input type="number" id="pageInput" min="1" 
+               style="width: 60px; text-align: center; padding: 4px; margin: 0; border: 1px solid #ddd; border-radius: 4px;" 
+               onkeydown="if(event.keyCode==13) jumpToPage()">
+         <span id="pageTotal">/ 1 页</span>
+         </div>
+
+         <button class="btn" id="nextBtn" style="width: 80px; margin: 0;" onclick="changePage(1)">下一页</button>
+          </div>
+            </div>
+        </div>
+        <!-- 👇 地图只放一次，独立出来 -->
+      <div id="map-view"></div> 
+  </div>
+
+     <script src="./config.js"></script>
+    <script>
+        document.getElementById('navEndCat').addEventListener('change', loadEndPOIByStart);
+
+        // 1. 初始化配置
+        mapboxgl.accessToken = window.MAPBOX_ACCESS_TOKEN || '';  
+        const map = new mapboxgl.Map({
+            container: 'map-view',
+            style: 'mapbox://styles/mapbox/streets-v12', // 改为街道风格
+            center: [113.2644, 23.1292],
+            zoom: 10
+        });
+
+        map.on('click', (e) => {
+      if (!mapPickEndEnabled) return;
+
+      mapPickEndEnabled = false;
+
+      const endSelect = document.getElementById('navEnd');
+
+     // 构造地图选点 option
+     const value = `${e.lngLat.lng},${e.lngLat.lat}`;
+     const text = `📍 地图选点 (${e.lngLat.lng.toFixed(4)}, ${e.lngLat.lat.toFixed(4)})`;
+
+     // 如果之前已经有地图选点，先删掉旧的
+     const oldPick = endSelect.querySelector('option[data-map-pick="1"]');
+     if (oldPick) oldPick.remove();
+
+      // 新建并插入到最顶部
+     const opt = document.createElement('option');
+     opt.value = value;
+     opt.text = text;
+     opt.setAttribute('data-map-pick', '1');
+
+     endSelect.insertBefore(opt, endSelect.firstChild);
+     endSelect.value = value;
+
+   
+     if (navEndMarker) navEndMarker.remove();
+
+      navEndMarker = new mapboxgl.Marker({ color: 'red' })
+     .setLngLat([e.lngLat.lng, e.lngLat.lat])
+     .setPopup(new mapboxgl.Popup().setText('终点（地图选点）'))
+     .addTo(map);
+
+      });
+
+
+
+        let mapMarkers = [];
+
+        // ================== 导航全局变量（新增） ==================
+        let navMode = 'driving';
+        let navPOIData = [];
+        let navRouteSourceId = 'nav-route-source';
+        let navRouteLayerId = 'nav-route';
+        let mapPickEndEnabled = false;
+        // 起点 / 终点 Marker
+         let navStartMarker = null;
+         let navEndMarker = null;
+
+
+        // 2. 页面切换
+        function switchPage(pageId, navEl) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            navEl.classList.add('active');
+            if (pageId === 'stats-page') loadTableData();
+            // ⭐ 关键：控制地图显示/隐藏
+          const mapView = document.getElementById('map-view');
+
+             if (pageId === 'stats-page') {
+             mapView.style.display = 'none';   // 数据明细不需要地图
+             } else {
+             mapView.style.display = 'block';  // 地图模式 & 地图导航 都需要
+             }
+
+           if (pageId === 'stats-page') loadTableData();
+        }
+
+        // 3. 地图搜索功能
+        // 导航方式切换
+document.querySelectorAll('input[name="navMode"]').forEach(radio => {
+    radio.addEventListener('change', function () {
+        navMode = this.value;
+    });
+});
+
+// ================= 终点 POI 加载函数 =================
+async function loadEndPOIByStart() {
+    const startVal = document.getElementById('navStart').value;
+    const endCat = document.getElementById('navEndCat').value;
+    const endSelect = document.getElementById('navEnd');
+
+    endSelect.innerHTML = '';
+    navPOIData = [];
+
+    if (!startVal || !endCat) return;
+
+    const [lng, lat] = startVal.split(',').map(Number);
+
+    const res = await fetch(`data/${endCat}.json`);
+    const data = await res.json();
+
+    navPOIData = data.features.filter(f => {
+        const [plng, plat] = f.geometry.coordinates;
+        return Math.hypot(plng - lng, plat - lat) < 0.06;
+    }).slice(0, 50);
+
+    navPOIData.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.geometry.coordinates.join(',');
+        opt.text = f.properties.店名 || f.properties.名称 || '未知地点';
+        endSelect.appendChild(opt);
+    });
+}
+
+
+        async function handleMapSearch() {
+            const cat = document.getElementById('mapCat').value;
+            const dist = document.getElementById('mapDist').value;
+            const kw = document.getElementById('mapKw').value;
+            const info = document.getElementById('mapInfo');
+            const list = document.getElementById('mapResultsList');
+
+            info.innerText = "正在检索海量数据...";
+            list.innerHTML = "";
+            mapMarkers.forEach(m => m.remove());
+
+            try {
+                const res = await fetch(`data/${cat}.json`);
+                const data = await res.json();
+                const matches = data.features.filter(f => {
+                    const p = f.properties;
+                    const nameMatch = (p.店名 || p.名称 || "").includes(kw);
+                    const addrMatch = (p.地址 || "").includes(dist);
+                    return nameMatch && addrMatch;
+                }).slice(0, 100); // 搜索最多展示100个点，保证流畅
+
+
+
+
+                matches.forEach(f => {
+                    const m = new mapboxgl.Marker({ color: 'red' })
+                        .setLngLat(f.geometry.coordinates)
+                        .setPopup(new mapboxgl.Popup().setHTML(`<b>${f.properties.店名 || f.properties.名称}</b><br>${f.properties.地址 || ''}`))
+                        .addTo(map);
+                    mapMarkers.push(m);
+
+                    const item = document.createElement('div');
+                    item.style.padding = "10px";
+                    item.style.borderBottom = "1px solid #eee";
+                    item.style.cursor = "pointer";
+                    item.innerHTML = `<b>${f.properties.店名 || f.properties.名称}</b><br><small>${f.properties.地址 || '地址不详'}</small>`;
+                    item.onclick = () => map.flyTo({ center: f.geometry.coordinates, zoom: 15 });
+                    list.appendChild(item);
+                });
+                info.innerText = `找到相关结果 ${matches.length} 个`;
+            } catch (e) { info.innerText = "数据读取失败，请检查文件。"; }
+        }
+
+      
+
+
+// ================= ④ 起点变化 → 加载附近 POI（正确位置） =================
+document.getElementById('navStart').addEventListener('change', loadEndPOIByStart);
+
+
+// ================= 终点关键字过滤 =================
+document.getElementById('navEndInput').addEventListener('input', function () {
+    const kw = this.value;
+    const endSelect = document.getElementById('navEnd');
+    endSelect.innerHTML = '';
+
+    navPOIData
+        .filter(f => (f.properties.店名 || f.properties.名称 || '').includes(kw))
+        .forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f.geometry.coordinates.join(',');
+            opt.text = f.properties.店名 || f.properties.名称;
+            endSelect.appendChild(opt);
+        });
+});
+
+
+      // 先在函数外面定义这两个变量
+let allTableFeatures = []; 
+let currentTablePage = 1;
+const rowsPerPage = 15;
+
+async function loadTableData() {
+    const cat = document.getElementById('tblCat').value;
+    const tbody = document.getElementById('statsTbody');
+    const status = document.getElementById('tblStatus');
+
+    tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; padding:50px;'>读取数据中...</td></tr>";
+
+    try {
+        // 关键修复：这里改为 .json
+        const res = await fetch(`data/${cat}.json`); 
+        const data = await res.json();
+        
+        allTableFeatures = data.features; 
+        currentTablePage = 1; 
+        status.innerText = `该数据集共有 ${allTableFeatures.length.toLocaleString()} 条记录`;
+        
+        renderTableByPage(); // 去执行渲染
+    } catch (e) { 
+        tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; color:red;'>加载失败，请确认 data 文件夹下有 " + cat + ".json</td></tr>"; 
+    }
+}
+
+        // --- 新增函数：渲染表格 (直接粘贴在 loadTableData 下面) ---
+        function renderTableByPage() {
+            const tbody = document.getElementById('statsTbody');
+            const pageInfo = document.getElementById('pageInfo');
+            const cat = document.getElementById('tblCat').value;
+
+            // 计算当前页的数据范围
+            const start = (currentTablePage - 1) * rowsPerPage;
+            const end = start + rowsPerPage;
+            const pageItems = allTableFeatures.slice(start, end);
+            const totalPages = Math.ceil(allTableFeatures.length / rowsPerPage) || 1;
+
+            // 构造 HTML 内容
+            tbody.innerHTML = pageItems.map(f => `
+                <tr>
+                    <td><strong>${f.properties.店名 || f.properties.名称 || '未知'}</strong></td>
+                    <td>${f.properties.地址 || '广州市'}</td>
+                    <td><span style="background:#e6f7ff; color:#1890ff; padding:2px 8px; border-radius:4px;">${cat}</span></td>
+                    <td><small>${f.geometry.coordinates[0].toFixed(3)}, ${f.geometry.coordinates[1].toFixed(3)}</small></td>
+                </tr>
+            `).join('');
+
+            // 更新页码信息显示
+            if(pageInfo) pageInfo.innerText = `第 ${currentTablePage} / ${totalPages} 页`;
+            
+            // 按钮状态控制
+            const pBtn = document.getElementById('prevBtn');
+            const nBtn = document.getElementById('nextBtn');
+            if(pBtn && nBtn) {
+                pBtn.disabled = (currentTablePage === 1);
+                nBtn.disabled = (currentTablePage === totalPages);
+                pBtn.style.opacity = (currentTablePage === 1) ? 0.5 : 1;
+                nBtn.style.opacity = (currentTablePage === totalPages) ? 0.5 : 1;
+            }
+        }
+
+        // --- 新增函数：翻页动作 (直接粘贴在最下面) ---
+        function changePage(step) {
+            currentTablePage += step;
+            renderTableByPage();
+            // 翻页后让数据明细页面的滚动条回到顶部
+            document.getElementById('stats-page').scrollTop = 0;
+        }
+
+  // 5. 极简强力渲染版 - 彻底避免边界计算报错
+map.on('load', () => {
+    fetch('data/广州市区界线.json')
+        .then(r => r.json())
+        .then(geojson => {
+            // 简单物理互换经纬度，不再进行 bounds 计算
+            geojson.features.forEach(f => {
+                const fix = (coords) => {
+                    if (typeof coords[0] === 'number') {
+                        // 如果第二位坐标明显是经度(>90)，则互换
+                        if (Math.abs(coords[1]) > 90) {
+                            [coords[0], coords[1]] = [coords[1], coords[0]];
+                        }
+                    } else {
+                        coords.forEach(fix);
+                    }
+                };
+                fix(f.geometry.coordinates);
+            });
+
+            // 直接添加数据源和图层，不使用 map.fitBounds()
+            map.addSource('gz-boundary-final', {
+                'type': 'geojson',
+                'data': geojson
+            });
+
+           map.addLayer({
+    'id': 'gz-line-final',
+    'type': 'line',
+    'source': 'gz-boundary-final',
+    'layout': {
+        'line-join': 'round', // 转角圆润，不会出现尖刺
+        'line-cap': 'round'
+    },
+    'paint': {
+        'line-color': 'green', // 使用绿色，更加醒目
+        'line-width': 3,        // 稍微调细一点，增加精致感
+        'line-opacity': 0.9      // 保持高透明度，确保清晰
+    }
+});
+            console.log("已发送极简渲染指令，请手动查看广州区域");
+        })
+        .catch(e => console.error("加载失败:", e));
+});
+// 负责画出表格内容的函数
+function renderTableByPage() {
+    const tbody = document.getElementById('statsTbody');
+    const pageInput = document.getElementById('pageInput');
+    const pageTotal = document.getElementById('pageTotal');
+    const cat = document.getElementById('tblCat').value;
+
+    const start = (currentTablePage - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+    const pageItems = allTableFeatures.slice(start, end);
+    const totalPages = Math.ceil(allTableFeatures.length / rowsPerPage) || 1;
+
+    // 更新表格行
+    tbody.innerHTML = pageItems.map(f => `
+        <tr>
+            <td><strong>${f.properties.店名 || f.properties.名称 || '未知'}</strong></td>
+            <td>${f.properties.地址 || '广州市'}</td>
+            <td><span style="background:#e6f7ff; color:#1890ff; padding:2px 8px; border-radius:4px;">${cat}</span></td>
+            <td><small>${f.geometry.coordinates[0].toFixed(3)}, ${f.geometry.coordinates[1].toFixed(3)}</small></td>
+        </tr>
+    `).join('');
+
+    // 更新页码输入框和总页数显示
+    if(pageInput) pageInput.value = currentTablePage;
+    if(pageTotal) pageTotal.innerText = `/ ${totalPages} 页`;
+    
+    // 按钮禁用逻辑
+    document.getElementById('prevBtn').disabled = (currentTablePage === 1);
+    document.getElementById('nextBtn').disabled = (currentTablePage === totalPages);
+}
+
+// 翻页函数
+function changePage(step) {
+    currentTablePage += step;
+    renderTableByPage();
+    document.getElementById('stats-page').scrollTop = 0;
+}
+
+// 跳页函数：按回车键触发
+function jumpToPage() {
+    const input = document.getElementById('pageInput');
+    const totalPages = Math.ceil(allTableFeatures.length / rowsPerPage) || 1;
+    let target = parseInt(input.value);
+
+    if (isNaN(target) || target < 1) target = 1;
+    if (target > totalPages) target = totalPages;
+
+    currentTablePage = target;
+    renderTableByPage();
+    document.getElementById('stats-page').scrollTop = 0;
+}
+async function drawRoute() {
+    const startVal = document.getElementById('navStart').value;
+    const endVal = document.getElementById('navEnd').value;
+    const startLngLat = startVal.split(',').map(Number);
+const endLngLat = endVal.split(',').map(Number);
+
+    const infoBox = document.getElementById('navInfo');
+
+    if (!startVal || !endVal) {
+        alert('请先选择起点和终点');
+        return;
+    }
+
+    infoBox.innerText = '正在计算最优路线...';
+
+    const url = `https://api.mapbox.com/directions/v5/mapbox/${navMode}/${startVal};${endVal}?geometries=geojson&access_token=${mapboxgl.accessToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!data.routes || !data.routes.length) {
+        infoBox.innerText = '未找到路线';
+        return;
+    }
+
+    const route = data.routes[0];
+
+    if (map.getSource(navRouteSourceId)) {
+        map.removeLayer(navRouteLayerId);
+        map.removeSource(navRouteSourceId);
+    }
+
+    map.addSource(navRouteSourceId, {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: route.geometry }
+    });
+
+    map.addLayer({
+        id: navRouteLayerId,
+        type: 'line',
+        source: navRouteSourceId,
+        paint: {
+            'line-color': navMode === 'walking' ? '#1890ff' :
+                          navMode === 'cycling' ? '#fa8c16' : '#f5222d',
+            'line-width': 5
+        }
+    });
+
+    // ================= 标注起点 =================
+if (navStartMarker) navStartMarker.remove();
+
+ navStartMarker = new mapboxgl.Marker({ color: 'green' })
+    .setLngLat(startLngLat)
+    .setPopup(new mapboxgl.Popup().setText('起点'))
+    .addTo(map);
+
+// ================= 标注终点 =================
+ if (navEndMarker) navEndMarker.remove();
+
+ navEndMarker = new mapboxgl.Marker({ color: 'red' })
+    .setLngLat(endLngLat)
+    .setPopup(new mapboxgl.Popup().setText('终点'))
+    .addTo(map);
+
+
+    infoBox.innerHTML = `
+        📏 ${(route.distance / 1000).toFixed(2)} km<br>
+        ⏱️ ${Math.round(route.duration / 60)} 分钟
+    `;
+
+    map.fitBounds(route.geometry.coordinates, { padding: 60 });
+}
+
+     </script>
+     </body>
+     </html>
